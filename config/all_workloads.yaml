@@ -640,3 +640,73 @@ workloads:
     module: run_image_transformer_inference@test_vision_transformer.py
     instances:
       gemma3_vision_transformer_bs1: { bs: 1, batch: 1, model_name: gemma3-vision-transformer-bs1 }
+
+
+
+  - api: TTNN
+    name: resnet50_bh_bottleneck
+    basedir: workloads/ttnn/resnet50
+    module : run_resnet50_bottleneck@run_ttnn_functional_resnet50_bh.py
+    instances:
+      resnet50_bh_bs16_bottleneck:
+        { bs: 16, model_name: resnet50-bh-bs16-bottleneck,
+          act_dtype: BFLOAT8_B, weight_dtype: BFLOAT8_B, math_fidelity: LoFi }
+
+  - api: TTNN
+    name: resnet50_bh_layer1
+    basedir: workloads/ttnn/resnet50
+    module : run_resnet50_layer1@run_ttnn_functional_resnet50_bh.py
+    instances:
+      resnet50_bh_bs16_layer1:
+        { bs: 16, model_name: resnet50-bh-bs16-layer1,
+          act_dtype: BFLOAT8_B, weight_dtype: BFLOAT8_B, math_fidelity: LoFi }
+
+  - api: TTNN
+    name: resnet50_bh_layer2
+    basedir: workloads/ttnn/resnet50
+    module : run_resnet50_layer2@run_ttnn_functional_resnet50_bh.py
+    instances:
+      resnet50_bh_bs16_layer2:
+        { bs: 16, model_name: resnet50-bh-bs16-layer2,
+          act_dtype: BFLOAT8_B, weight_dtype: BFLOAT8_B, math_fidelity: LoFi }
+
+  - api: TTNN
+    name: resnet50_bh_layer3
+    basedir: workloads/ttnn/resnet50
+    module : run_resnet50_layer3@run_ttnn_functional_resnet50_bh.py
+    instances:
+      resnet50_bh_bs16_layer3:
+        { bs: 16, model_name: resnet50-bh-bs16-layer3,
+          act_dtype: BFLOAT8_B, weight_dtype: BFLOAT8_B, math_fidelity: LoFi }
+
+  - api: TTNN
+    name: resnet50_bh_layer4
+    basedir: workloads/ttnn/resnet50
+    module : run_resnet50_layer4@run_ttnn_functional_resnet50_bh.py
+    instances:
+      resnet50_bh_bs16_layer4:
+        { bs: 16, model_name: resnet50-bh-bs16-layer4,
+          act_dtype: BFLOAT8_B, weight_dtype: BFLOAT8_B, math_fidelity: LoFi }
+
+  - api: TTNN
+    name: resnet50_bh_fc
+    basedir: workloads/ttnn/resnet50
+    module : run_resnet50_fc@run_ttnn_functional_resnet50_bh.py
+    instances:
+      resnet50_bh_bs16_fc:
+        { bs: 16, model_name: resnet50-bh-bs16-fc, in_features: 2048, num_classes: 1000,
+          act_dtype: BFLOAT8_B, weight_dtype: BFLOAT8_B, math_fidelity: LoFi }
+
+  - api: TTNN
+    name: resnet50_bh
+    basedir: workloads/ttnn/resnet50
+    module : run_resnet50@run_ttnn_functional_resnet50_bh.py
+    instances:
+      resnet50_bh_bs16:
+        { bs: 16, model_name: resnet50-bh-bs16,
+          act_dtype: BFLOAT8_B, weight_dtype: BFLOAT8_B, math_fidelity: LoFi }
+      # batch 32 needs is_blackhole_p100() == True in the fork -- the non-p100
+      # fold grid asks for core x=12, which does not exist on the p100a 12x10 grid.
+      resnet50_bh_bs32:
+        { bs: 32, model_name: resnet50-bh-bs32, batch_size: 32,
+          act_dtype: BFLOAT8_B, weight_dtype: BFLOAT8_B, math_fidelity: LoFi }

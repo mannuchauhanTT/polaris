@@ -237,14 +237,23 @@ class SimTensor:
                 return dtype.itemsize
             elif isinstance(dtype, str):
                 return get_bpe(get_sim_dtype(dtype))
+            elif hasattr(dtype, 'itemsize'):        # DataType enum (BFLOAT8_B -> 1, BFLOAT4_B -> 0.5)
+                return dtype.itemsize
             else:
                 raise TypeError(f"Unsupported dtype type: {type(dtype)}")
-        if itemprec is None:
+
+        # Prefer the hardware-faithful dtype when the op set one: SimTensor.dtype
+        # is numpy, which collapses BFLOAT8_B/BFLOAT4_B/FLOAT32 all to float32 (4B).
+        # _hw_dtype carries the real ttnn DataType, whose itemsize table is correct.
+        hw_dtype = getattr(self, '_hw_dtype', None)
+        if itemprec is not None:
+            itemsize = typesize(itemprec)
+        elif hw_dtype is not None:
+            itemsize = typesize(hw_dtype)
+        else:
             assert self.dtype is not None, f"SimTensor({self.name}) has no dtype to calculate nbytes"
             itemsize = typesize(self.dtype)
-        else:
-            itemsize = typesize(itemprec)
-        return self.nelems() * itemsize #assumes np.dtype
+        return self.nelems() * itemsize
 
     def check_shape(self):
         if self.shape is None:

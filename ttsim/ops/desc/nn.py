@@ -585,6 +585,7 @@ def conv_sinf(iTList, oTList, op, **kwargs):
         from ttsim.ops.tensor import nchw_to_nhwc_flat
         from ttsim.front.ttnn.tensor import DataType, Layout
         oTList[0].hw_shape = nchw_to_nhwc_flat(output_shape)
+        oTList[0]._hw_dtype = DataType.BFLOAT16
         # Hardware pre-processes weights to [1, 1, kernel_C_in*kH*kW, C_out] BFLOAT8_B TILE DRAM.
         # Use W.shape[1] (weight's own C_in/group) rather than X.shape[1]//group so the LUT
         # key matches when input C is padded above weight C (VGG UNet entry: input C=16,

@@ -439,6 +439,19 @@ def conv2d_pp(args_list, kwargs_dict):
     return (input_tensor, weight_tensor, bias_tensor), kwargs_dict
 
 
+def matmul_1x1_pp(args_list, kwargs_dict):
+    """conv2d_pp, plus the caller's math fidelity — 1x1-conv->MatMul path ONLY."""
+    ckc = kwargs_dict.get("compute_config", None)
+    args, kwargs_dict = conv2d_pp(args_list, kwargs_dict)
+    if ckc is not None:
+        mf = getattr(ckc, "math_fidelity", None)
+        if mf is None and isinstance(ckc, MathFidelity):
+            mf = ckc
+        if mf is not None:
+            kwargs_dict["math_fidelity"] = mf.name
+    return args, kwargs_dict
+
+
 def outer_pp(args_list, kwargs_dict):
     """Preprocessor for outer product operation."""
     assert len(args_list) == 2, "ttnn.outer has 2 inputs"
@@ -1213,6 +1226,108 @@ def permute_reshape_to_nhwc_flat(input_tensor: 'Tensor') -> 'Tensor':
     t2 = _emit_entry_transpose(t1, [1, 1, N * H * W, C])
     return t2
 
+def _emit_stem_tracking_op(input_tensor, optype, output_hw_shape, attrs, out_logical_shape=None):
+    """Emit a tracking-only stem SimOp with an explicit output hw_shape.
+
+    Generalization of _emit_entry_transpose to any stem optype (Pad/Transpose/
+    Slice), with an optional distinct logical output shape (Slice changes the
+    logical shape; Pad/Transpose here advance hw_shape only). Mirrors the
+    pad_channels_nchw / _emit_entry_transpose emission exactly: pre-populated
+    perf_stats to short-circuit sinf, frozen-shape snapshot, dtype/memory
+    propagation, device.add_op.
+    """
+    in_shape = list(input_tensor.shape)
+    op_name = generate_new_op_name()
+    out_shape = list(out_logical_shape) if out_logical_shape is not None else list(in_shape)
+    out_tensor = Tensor(
+        name=op_name + '.out',
+        shape=out_shape,
+        dtype=input_tensor.dtype,
+        layout=input_tensor.get_layout(),
+        op_out=[op_name],
+        device=input_tensor.device,
+    )
+    out_tensor.hw_shape = list(output_hw_shape)
+    input_tensor.op_in.append(op_name)
+
+    opinfo = {
+        'name': op_name,
+        'optype': optype,
+        'inList': [input_tensor.name],
+        'outList': [out_tensor.name],
+        'attrs': dict(attrs),
+    }
+    opobj = SimOp(opinfo)
+
+    elem_size = input_tensor.element_size()
+    nelems_in = 1
+    for d in in_shape:
+        nelems_in *= int(d)
+    nelems_out = 1
+    for d in out_shape:
+        nelems_out *= int(d)
+    opobj.perf_stats = {
+        'inElems': nelems_in,
+        'outElems': nelems_out,
+        'inBytes': nelems_in * elem_size,
+        'outBytes': nelems_out * elem_size,
+        'instrs': {'mov': nelems_out},
+    }
+    opobj._frozen_input_shapes = [list(in_shape)]
+    opobj._frozen_output_shapes = [list(out_shape)]
+    opobj.update_tensor_counts([input_tensor], [out_tensor])
+
+    _propagate_ttnn_dtype([input_tensor], [out_tensor])
+    _propagate_memory_config([input_tensor], [out_tensor])
+
+    input_tensor.device.add_op(opobj)  # type: ignore[union-attr]
+    return out_tensor
+
+
+def emit_resnet_stem_entry(input_tensor: 'Tensor') -> 'Tensor':
+    """Emit the ResNet-50 stem as the hardware 7-op Pad/Transpose/Slice sequence.
+
+    The p100a profiler records the ResNet stem 'fold' NOT as a Fold op but as
+    2 Pad + 4 Transpose + 1 Slice. The ResNet LUT already contains all 7 entries
+    at these exact shapes -- currently dead because Polaris bypasses the stem.
+    Emitting these tracking-only SimOps with matching hw_shape lands each on its
+    waiting LUT entry and makes the op graph hardware-faithful, the same way
+    pad_channels_nchw / permute_reshape_to_nhwc_flat model the VGG stem.
+
+    Measured HW shapes (INPUT_0/OUTPUT_0 [W,Z,Y,X], batch 16):
+        0 Pad       IN(16,3,224,224)   OUT(16,4,256,224)
+        1 Transpose IN(16,4,256,224)   OUT(16,4,224,256)
+        2 Pad       IN(16,4,224,256)   OUT(16,4,256,256)
+        3 Transpose IN(16,4,256,256)   OUT(16,256,4,256)
+        4 Transpose IN(16,128,8,256)   OUT(16,128,256,8)
+        5 Transpose IN(16,128,128,16)  OUT(16,128,128,16)
+        6 Slice     IN(16,128,128,16)  OUT(16,115,115,16)  -> conv1 input
+
+    Each op's OUTPUT hw_shape is forced to the NEXT op's recorded INPUT shape so
+    its LUT key matches -- the tracking-only pattern of _emit_entry_transpose
+    (the inter-op tensor flow is a fiction; only the per-op key matters).
+
+    Returns the tensor feeding conv1 (logical [16,115,115,16]).
+    """
+    x = input_tensor
+    x = _emit_stem_tracking_op(x, 'Pad', [16, 4, 256, 224],
+                               {'pads': [0, 0, 0, 0, 0, 1, 0, 32], 'mode': 'constant', 'value': 0})
+    x = _emit_stem_tracking_op(x, 'Transpose', [16, 4, 224, 256], {})
+    x = _emit_stem_tracking_op(x, 'Pad', [16, 4, 256, 256],
+                               {'pads': [0, 0, 0, 0, 0, 0, 0, 32], 'mode': 'constant', 'value': 0})
+    # op3 output must key op4 on the full (16,128,8,256) -- z=128, not 256.
+    x = _emit_stem_tracking_op(x, 'Transpose', [16, 128, 8, 256], {})
+    # op4 output keys op5 on (16,128,128,16).
+    x = _emit_stem_tracking_op(x, 'Transpose', [16, 128, 128, 16], {})
+    x = _emit_stem_tracking_op(x, 'Transpose', [16, 128, 128, 16], {})
+    # Slice: ttnn arity-1 form; logical output is NCHW [N,C,H,W] for conv1.
+    # hw_shape is the FLATTENED [1,1,N*H*W,C]=[1,1,211600,16] so the halo that
+    # feeds conv1 keys on the LUT's (211600,16) k=4x4 stem-halo entry (not the
+    # 4D-spatial (115,16) which has no entry).
+    x = _emit_stem_tracking_op(x, 'Slice', [1, 1, 16 * 115 * 115, 16],
+                               {'output_shape': [16, 16, 115, 115]},
+                               out_logical_shape=[16, 16, 115, 115])
+    return x
 
 def _with_halo(op_fn, is_transpose: bool = False, move_before_conv: bool = False):
     """Return a wrapper that auto-emits a Halo SimOp before the main op.
@@ -1244,7 +1359,11 @@ def _with_halo(op_fn, is_transpose: bool = False, move_before_conv: bool = False
             ks = (ks, ks)
         ks = tuple(ks)
         kwargs['kernel_size'] = ks
-        if ks != (1, 1):
+        _st = kwargs.get('stride', (1, 1))
+        if isinstance(_st, int):
+            _st = (_st, _st)
+        _st = tuple(_st)
+        if ks != (1, 1) or _st != (1, 1):
             # --- 3×3+ kernel: ITS → Halo → [Move] → Conv ---
             # Capture original input BEFORE ITS/Halo so Move guard uses the right tensor.
             original_input = kwargs.get('input_tensor') or (args[0] if args else None)
@@ -1324,7 +1443,7 @@ def _with_halo(op_fn, is_transpose: bool = False, move_before_conv: bool = False
             #      (MaxPool / ConvTranspose) — the kernel doesn't need to
             #      reallocate.
             #   3. The original deallocate_activation + L1-sharded guard below.
-            emit_move = kwargs.get('emit_move_before_conv', True)
+            emit_move = kwargs.get('emit_move_before_conv', False)  #supress move
             if (
                 move_before_conv
                 and emit_move
@@ -1412,7 +1531,7 @@ def _with_move(op_fn):
 _conv2d_raw = single_output_immediate_op("Conv", preprocess=conv2d_pp)
 # 1×1 conv: hardware lowers to MatMul; use same conv2d_pp attrs so matmul_shape_inf
 # detects kernel_shape=[1,1] and applies NCHW conv output-shape logic.
-_matmul_1x1_raw = single_output_immediate_op("MatMul", preprocess=conv2d_pp)
+_matmul_1x1_raw = single_output_immediate_op("MatMul", preprocess=matmul_1x1_pp)
 
 
 def _matmul_1x1_with_hw_fields(*args, **kwargs):
@@ -1446,6 +1565,7 @@ def _matmul_1x1_with_hw_fields(*args, **kwargs):
             bias_t._hw_layout = Layout.TILE_LAYOUT
     if input_t is not None:
         input_t._hw_layout = Layout.TILE_LAYOUT
+        input_t._hw_dtype = DataType.BFLOAT8_B   # 1x1 matmul input is bf8 on hardware
 
     return result
 
@@ -1469,10 +1589,12 @@ def _apply_conv_output_layout(result, kwargs):
 
 def _conv2d_dispatch(*args, **kwargs):
     ks = kwargs.get('kernel_size', (3, 3))
-    if tuple(ks) == (1, 1):
-        result = _matmul_1x1_with_hw_fields(*args, **kwargs)
+    st = kwargs.get('stride', (1, 1))
+    if isinstance(st, int): st = (st, st)
+    if tuple(ks) == (1, 1) and tuple(st) == (1, 1):
+        result = _matmul_1x1_with_hw_fields(*args, **kwargs)   # pure 1x1 -> matmul
     else:
-        result = _conv2d_raw(*args, **kwargs)
+        result = _conv2d_raw(*args, **kwargs)                   # 3x3+ OR 1x1 stride 2 -> conv
     return _apply_conv_output_layout(result, kwargs)
 
 

@@ -96,7 +96,7 @@ class DataType(Enum):
             "int64": cls.INT64,
             "float32": cls.FLOAT32,
             "float16": cls.BFLOAT16,
-            "bool": cls.UINT8,  # Map bool to uint8
+            "bool": cls.UINT8,  # Map bool to uint8.
         }
 
         # Try exact match first
@@ -368,7 +368,7 @@ class Tensor(SimTensor):
             f"got args={args}, kwargs={kwargs}"
         )
     def set_shape(self, newshape):
-        super().set_shape(newshape) 
+        super().set_shape(newshape)
         if newshape is not None:
             self._padded_shape = self._calculate_padded_shape(Shape(newshape), self.layout)
         logger.debug("set_shape: {} layout {} newshape {} and padded_shape {}", self.name, self.layout, newshape, self._padded_shape)

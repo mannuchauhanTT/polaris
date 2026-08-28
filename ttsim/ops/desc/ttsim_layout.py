@@ -9,7 +9,7 @@ Layout, shard, and transformer head op descriptors:
   ConcatHeads, CreateQKVHeads.
 Used by the TTNN front-end tracking-only operator APIs (*_op helpers) in ttnn_shim.
 """
-
+import sys
 from ttsim.ops.desc.registry import register_ops
 from ttsim.ops.tensor import _coerce_shape_to_list, require_shape_list
 
@@ -62,6 +62,21 @@ _HALO_EXT_Y: dict[tuple[int, int, int, int, int, int, bool], int] = {
     (1024,  512, 2, 2, 0, 0, True): 4680,
     (4096,  256, 2, 2, 0, 0, True): 24768,
     (16384, 128, 2, 2, 0, 0, True): 82240,
+
+    # --- ResNet-50 @224, p100a bs16 (merged_ops...260816) ---
+    ( 211600,    16, 4, 4, 0, 0, False):  274204,   # 2798 sticks x 98 cores
+    ( 200704,    64, 3, 3, 1, 1, False):  247450,   # 2525 sticks x 98 cores
+    (  50176,    64, 3, 3, 1, 1, False):   76860,   # 732 sticks x 105 cores
+    (  50176,   128, 3, 3, 1, 1, False):   82845,   # 789 sticks x 105 cores
+    (  50176,   256, 1, 1, 0, 0, False):   56175,   # 535 sticks x 105 cores
+    (  12544,   128, 3, 3, 1, 1, False):   25480,   # 260 sticks x 98 cores
+    (  12544,   256, 3, 3, 1, 1, False):   27538,   # 281 sticks x 98 cores
+    (  12544,   512, 1, 1, 0, 0, False):   12830,   # 1283 sticks x 10 cores
+    (   3136,   256, 3, 3, 1, 1, False):   10192,   # 104 sticks x 98 cores
+    (   3136,   512, 3, 3, 1, 1, False):    5410,   # 541 sticks x 10 cores
+    (   3136,  1024, 1, 1, 0, 0, False):    3870,   # 387 sticks x 10 cores
+    (    784,   512, 3, 3, 1, 1, False):    1620,   # 180 sticks x 9 cores
+    (    784,  2048, 7, 7, 0, 0, False):     784,   # 784 sticks x 1 cores
 }
 
 
@@ -473,6 +488,7 @@ def _halo_ext_y(in_shape: list[int], attrs: dict) -> 'int | None':
 
 
 def halo_sinf(iTList, oTList, op, **kwargs):
+    from ttsim.front.ttnn.tensor import DataType
     """Shape inference for Halo: logical shape passthrough with halo-extended hw_shape.
 
     The logical tensor shape is unchanged (halo extraction is transparent to
@@ -507,9 +523,11 @@ def halo_sinf(iTList, oTList, op, **kwargs):
         C = in_shape[1]  # NCHW channel dim
         oTList[0].hw_shape = [1, 1, ext_y, C]
         out_elems = ext_y * C
+        oTList[0]._hw_dtype = DataType.BFLOAT16         # gathered -> feeds a conv -> bf16
     else:
         oTList[0].hw_shape = getattr(X, 'hw_shape', None)
         out_elems = elems  # logical passthrough
+        oTList[0]._hw_dtype = getattr(X, '_hw_dtype', None)  # passthrough -> keep input dtype
 
     op.perf_stats = {
         'inElems': elems,
@@ -537,6 +555,8 @@ def move_sinf(iTList, oTList, op, **kwargs):
     oTList[0].shape = list(in_shape)
     oTList[0].dtype = X.dtype
     oTList[0].hw_shape = getattr(X, 'hw_shape', None)  # propagate NHWC-flattened hw shape
+    # in the Move sinf (ttsim_layout.py, move_sinf or equivalent)
+    oTList[0]._hw_dtype = getattr(iTList[0], '_hw_dtype', None)
 
     elem_size = op.attrs.get('element_size', 2)
     elems = _nelems(in_shape)

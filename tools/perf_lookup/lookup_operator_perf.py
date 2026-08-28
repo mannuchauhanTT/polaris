@@ -1068,6 +1068,21 @@ class OperatorPerfMap:
                         key_add_bc,
                         self._source_path,
                     )
+            if entry_val is None:
+                try:
+                    key22 = build_master_key_tuple_22(op, t0, t1, t0)
+                except Exception as e:
+                    logger.debug(
+                        "Perf lookup add 3-operand dup-key build failed for op {}: {}",
+                        getattr(op, "name", "?"), e,
+                    )
+                    key22 = None
+                if key22 is not None:
+                    ev22 = self._entries.get(key22)
+                    if ev22 is not None:
+                        entry_val = ev22
+                        lookup_key = key22
+                        hit_source = "add_arity_dup"
 
         # Move: arity-1 in Polaris, arity-2 in hardware profiler (src + dst same tensor).
         # After 9-tuple miss, try 16-tuple with t0 duplicated for both positions.

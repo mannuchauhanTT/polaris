@@ -1,0 +1,214 @@
+{
+    "devname": "Blackhole",
+    "name": "p100a",
+    "ipgroups": [
+        {
+            "ipname": "tensix",
+            "iptype": "compute",
+            "num_units": 120,
+            "freq_MHz": null,
+            "ramp_penalty": 100.0,
+            "ipobj": {
+                "name": "tensix",
+                "iptype": "compute",
+                "l2_cache": {
+                    "num_banks": 32,
+                    "bytes_per_clk_per_bank": 64
+                },
+                "pipes": [
+                    {
+                        "name": "matrix",
+                        "num_units": 1,
+                        "freq_MHz": 1350.0,
+                        "systolic_depth": 1,
+                        "instructions": [
+                            {
+                                "name": "add",
+                                "tpt": {
+                                    "int8": 2048.0,
+                                    "bf16": 512.0,
+                                    "fp16": 512.0,
+                                    "fp8": 2048.0
+                                }
+                            },
+                            {
+                                "name": "sub",
+                                "tpt": {
+                                    "int8": 2048.0,
+                                    "bf16": 512.0,
+                                    "fp16": 512.0,
+                                    "fp8": 2048.0
+                                }
+                            },
+                            {
+                                "name": "mul",
+                                "tpt": {
+                                    "int8": 2048.0,
+                                    "bf16": 512.0,
+                                    "fp16": 512.0,
+                                    "fp8": 2048.0
+                                }
+                            },
+                            {
+                                "name": "mac",
+                                "tpt": {
+                                    "int8": 2048.0,
+                                    "bf16": 512.0,
+                                    "fp16": 512.0,
+                                    "fp8": 2048.0
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "name": "vector",
+                        "num_units": 1,
+                        "freq_MHz": 1350.0,
+                        "systolic_depth": 1,
+                        "instructions": [
+                            {
+                                "name": "add",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "sub",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "mul",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "div",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "mac",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "tanh",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "log",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "exp",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "sqrt",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "rsqrt",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "reciprocal",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "cmp",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "mov",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "max",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "sin",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            },
+                            {
+                                "name": "cos",
+                                "tpt": {
+                                    "int32": 32.0,
+                                    "fp32": 32.0
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+            "systolic_depth": null
+        },
+        {
+            "ipname": "gddr6_bh",
+            "iptype": "memory",
+            "num_units": 7,
+            "freq_MHz": null,
+            "ramp_penalty": 0.0,
+            "ipobj": {
+                "name": "gddr6_bh",
+                "iptype": "memory",
+                "technology": "GDDR",
+                "data_bits": 32,
+                "freq_MHz": 1000.0,
+                "size_GB": 4,
+                "stacks": 1,
+                "data_rate": 8,
+                "transfer_rate_GTs": 16.0
+            },
+            "systolic_depth": null
+        }
+    ],
+    "operator_lookup_file": "lfc://hlm-lut/bh_p100a_lut_v5.yaml",
+    "operator_lookup_core_count": null,
+    "operator_lookup_hybrid_curve": false,
+    "compute_grid_size": [
+        12,
+        10
+    ]
+}
